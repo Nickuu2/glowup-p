@@ -1,0 +1,303 @@
+name: Worker
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      duel_enabled:
+        description: 'Enable Duel logic instead of Roobet (true/false)'
+        required: false
+        default: 'false'
+      testing:
+        description: 'Enable Testing Mode (simulated bets, zero capital risk)'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: data-sync-worker
+  cancel-in-progress: false
+
+jobs:
+  run-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout Private Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PRIVATE_REPO_NAME }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install playwright playwright-stealth python-dotenv requests pyotp python-dateutil
+          fi
+          python -m playwright install --with-deps chromium
+
+      - name: Check Skip Job
+        id: check_skip
+        env:
+          SKIP_JOB_ENV: ${{ secrets.SKIP_JOB || vars.SKIP_JOB }}
+        run: |
+          should_skip="false"
+          if [ -f .env ]; then
+            if grep -q "SKIP_JOB=true" .env; then
+              should_skip="true"
+            fi
+          fi
+          if [ "$SKIP_JOB_ENV" == "true" ]; then
+            should_skip="true"
+          fi
+          echo "should_skip=$should_skip" >> $GITHUB_OUTPUT
+          if [ "$should_skip" == "true" ]; then
+            echo "⚠️ Job is configured to be skipped."
+          fi
+
+      - name: Check pause window
+        if: steps.check_skip.outputs.should_skip != 'true'
+        id: checkpause
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, time, requests
+          def get_var(token, owner, repo, name):
+              url = f"https://api.github.com/repos/{owner}/{repo}/actions/variables/{name}"
+              r = requests.get(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+              if r.status_code == 200:
+                  return r.json().get('value')
+              return None
+          token = os.environ.get('GH_TOKEN', '')
+          repo_full = os.environ.get('GITHUB_REPOSITORY', '')
+          if token and '/' in repo_full:
+              owner, repo = repo_full.split('/')
+              v = get_var(token, owner, repo, 'PAUSE_UNTIL')
+              now = int(time.time())
+              paused = 'false'
+              try:
+                  if v and int(v) > now:
+                      paused = 'true'
+              except Exception:
+                  paused = 'false'
+          else:
+              paused = 'false'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'paused={paused}\n')
+          PY
+
+      - name: Write auth_state.json from secret
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        env:
+          AUTH_STATE_JSON: ${{ secrets.AUTH_STATE_JSON }}
+        run: |
+          if [ -n "$AUTH_STATE_JSON" ]; then
+            echo "$AUTH_STATE_JSON" > auth_state.json
+          fi
+
+      - name: Restore & Decrypt Persistent Data & Profile Cache
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: |
+            worker_data.json.gpg
+            playwright_user_data.zip.gpg
+          key: persistent-data-arb-${{ github.run_number }}
+          restore-keys: |
+            persistent-data-arb-
+            persistent-data-v1-
+
+      - name: Decrypt Data
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        run: |
+          if [ -n "$GPG_PASSPHRASE" ]; then
+            if [ -f worker_data.json.gpg ]; then
+              gpg --quiet --batch --yes --decrypt --passphrase "$GPG_PASSPHRASE" \
+              --output worker_data.json worker_data.json.gpg
+              echo "✅ Decrypted persistent data"
+            fi
+            if [ -f playwright_user_data.zip.gpg ]; then
+              gpg --quiet --batch --yes --decrypt --passphrase "$GPG_PASSPHRASE" \
+              --output playwright_user_data.zip playwright_user_data.zip.gpg
+              unzip -q -o playwright_user_data.zip
+              echo "✅ Decrypted and restored browser profile"
+            fi
+          fi
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Run Arbitrage Worker Script
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        id: run_worker
+        env:
+          AUTH_STATE_FILE: '${{ github.workspace }}/auth_state.json'
+          DUEL_ENABLED: ${{ github.event.inputs.duel_enabled || secrets.DUEL_ENABLED || vars.DUEL_ENABLED || '' }}
+          TESTING: ${{ github.event.inputs.testing || secrets.TESTING || vars.TESTING || '' }}
+          USE_PROXY: ${{ secrets.USE_PROXY || vars.USE_PROXY || '' }}
+          PROXY_IP: ${{ secrets.PROXY_IP }}
+          PROXY_PORT: ${{ secrets.PROXY_PORT }}
+          PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
+          PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
+          SITE_USERNAME: ${{ secrets.SITE_USERNAME }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          # Dedicated bookmaker credentials & 2FA secrets
+          DUEL_USERNAME: ${{ secrets.DUEL_USERNAME || secrets.SITE_USERNAME }}
+          DUEL_PASSWORD: ${{ secrets.DUEL_PASSWORD || secrets.SITE_PASSWORD }}
+          DUEL_AUTH_SECRET: ${{ secrets.DUEL_AUTH_SECRET || secrets.GOOGLE_AUTH_SECRET }}
+          GOOGLE_AUTH_SECRET: ${{ secrets.GOOGLE_AUTH_SECRET }}
+          STAKE_USERNAME: ${{ secrets.STAKE_USERNAME || secrets.SITE_USERNAME }}
+          STAKE_PASSWORD: ${{ secrets.STAKE_PASSWORD || secrets.SITE_PASSWORD }}
+          STAKE_AUTH_SECRET: ${{ secrets.STAKE_AUTH_SECRET }}
+          ROOBET_USERNAME: ${{ secrets.ROOBET_USERNAME || secrets.SITE_USERNAME }}
+          ROOBET_PASSWORD: ${{ secrets.ROOBET_PASSWORD || secrets.SITE_PASSWORD }}
+          ROOBET_AUTH_SECRET: ${{ secrets.ROOBET_AUTH_SECRET }}
+          # Operational settings & overrides (accepts from Secrets, Variables, or .env)
+          TRANSFER_ENABLED: ${{ secrets.TRANSFER_ENABLED || vars.TRANSFER_ENABLED || '' }}
+          MIN_BALANCE: ${{ secrets.MIN_BALANCE || vars.MIN_BALANCE || '' }}
+          BET_AMOUNT: ${{ secrets.BET_AMOUNT || vars.BET_AMOUNT || '' }}
+          SUREBET_URL: ${{ secrets.SUREBET_URL || vars.SUREBET_URL || '' }}
+          STAKE_DOMAIN: ${{ secrets.STAKE_DOMAIN || vars.STAKE_DOMAIN || '' }}
+          SELECTION_TIMEOUT: ${{ secrets.SELECTION_TIMEOUT || vars.SELECTION_TIMEOUT || '' }}
+          ODDS_TOLERANCE_PCT: ${{ secrets.ODDS_TOLERANCE_PCT || vars.ODDS_TOLERANCE_PCT || '' }}
+          MAX_RUNTIME_HOURS: ${{ secrets.MAX_RUNTIME_HOURS || vars.MAX_RUNTIME_HOURS || '' }}
+          SUREBET_SLEEP: ${{ secrets.SUREBET_SLEEP || vars.SUREBET_SLEEP || '' }}
+          LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
+          HEADLESS_MODE: 'false'
+          PYTHONUNBUFFERED: 1
+          PYTHONIOENCODING: 'utf-8'
+          GITHUB_ACTIONS: true
+          TIMEZONE: ${{ secrets.TIMEZONE || vars.TIMEZONE || '' }}
+        run: |
+          xvfb-run -a python Arb-Workflow.py || true
+
+      - name: Parse run status
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        id: parse
+        run: |
+          python - <<'PY'
+          import json, os
+          p = 'run_status.json'
+          if not os.path.exists(p):
+              status, reason, wait_hours = 'none', 'none', '0'
+          else:
+              try:
+                  d = json.load(open(p))
+                  status = str(d.get('status') or 'none')
+                  reason = str(d.get('reason') or 'none')
+                  wait_hours = str(d.get('wait_hours') or 0)
+              except Exception:
+                  status, reason, wait_hours = 'none', 'none', '0'
+          print(f'status={status}')
+          print(f'reason={reason}')
+          print(f'wait_hours={wait_hours}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'status={status}\nreason={reason}\nwait_hours={wait_hours}\n')
+          PY
+
+      - name: Encrypt & Save Cache
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        id: encrypt_cache
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -n "$GPG_PASSPHRASE" ]; then
+            if [ -f worker_data.json ]; then
+              gpg --quiet --batch --yes --symmetric --passphrase "$GPG_PASSPHRASE" \
+              --output worker_data.json.gpg worker_data.json
+              echo "✅ Encrypted worker_data.json"
+            fi
+            if [ -d playwright_user_data ]; then
+              python - <<'PY'
+              import zipfile, os, pathlib
+              src = pathlib.Path('playwright_user_data')
+              with zipfile.ZipFile('playwright_user_data.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+                  for f in src.rglob('*'):
+                      zf.write(f, f.relative_to(src.parent))
+              print('✅ Profile zipped')
+              PY
+              gpg --quiet --batch --yes --symmetric --passphrase "$GPG_PASSPHRASE" \
+              --output playwright_user_data.zip.gpg playwright_user_data.zip
+              echo "✅ Encrypted browser profile"
+            fi
+          fi
+
+      - name: Save Cache
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            worker_data.json.gpg
+            playwright_user_data.zip.gpg
+          key: persistent-data-arb-${{ github.run_number }}
+
+      - name: Cleanup Old Caches
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/actions/caches > caches.json || true
+          if [ -f caches.json ]; then
+            jq -r '.actions_caches[]? | select((.created_at | split(".")[0] + "Z" | fromdateiso8601) < (now - 172800)) | .id' caches.json | tr -d '\r' | while read cache_id; do
+              if [ -n "$cache_id" ]; then
+                gh api --method DELETE -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/actions/caches/$cache_id || true
+              fi
+            done
+          fi
+
+      - name: Log run outcome to Discord
+        if: always() && steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
+        continue-on-error: true
+        env:
+          LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
+          RUN_STATUS: ${{ steps.parse.outputs.status }}
+          RUN_REASON: ${{ steps.parse.outputs.reason }}
+          RUN_NUMBER: ${{ github.run_number }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          url = os.environ.get('LOGS_WEBHOOK_URL', '').strip()
+          if not url:
+              exit(0)
+          status = os.environ.get('RUN_STATUS', 'unknown').strip()
+          reason = os.environ.get('RUN_REASON', 'unknown').strip()
+          run_num = os.environ.get('RUN_NUMBER', '?').strip()
+          job_status = os.environ.get('JOB_STATUS', 'unknown').strip()
+          
+          if job_status not in ('success', 'cancelled'):
+              icon = '🔴'
+              msg = f'{icon} Arb Run #{run_num} — WORKFLOW ERROR | Status: {status} | Reason: {reason}'
+          elif status == 'completed':
+              icon = '✅'
+              msg = f'{icon} Arb Run #{run_num} completed successfully.'
+          else:
+              icon = 'ℹ️'
+              msg = f'{icon} Arb Run #{run_num} finished | Status: {status} | Reason: {reason}'
+          
+          try:
+              requests.post(url, json={'content': msg}, timeout=10)
+          except Exception:
+              pass
+          PY
