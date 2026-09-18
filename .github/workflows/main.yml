@@ -1,4 +1,4 @@
-name: Arbitrage Automation Worker
+name: Worker
 
 on:
   schedule:
