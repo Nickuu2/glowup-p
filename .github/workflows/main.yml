@@ -16,12 +16,30 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: Validate and Prepare Repository Target
+        id: repo_prep
+        env:
+          RAW_REPO: ${{ secrets.PRIVATE_REPO_NAME || vars.PRIVATE_REPO_NAME }}
+          HAS_TOKEN: ${{ (secrets.PRIVATE_REPO_TOKEN != '' || vars.PRIVATE_REPO_TOKEN != '') && 'true' || 'false' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::❌ PRIVATE_REPO_TOKEN secret is missing in this repository! Please go to your Public Repo Settings -> Secrets and variables -> Actions -> Secrets, and create 'PRIVATE_REPO_TOKEN' with your GitHub Personal Access Token (PAT)."
+            exit 1
+          fi
+          if [ -z "$RAW_REPO" ]; then
+            echo "::error::❌ PRIVATE_REPO_NAME is missing! Please go to your Public Repo Settings -> Secrets and variables -> Actions, and add 'PRIVATE_REPO_NAME' with format 'owner/repo-name'."
+            exit 1
+          fi
+          # Automatically clean up if full URL or .git was provided
+          CLEAN_REPO=$(echo "$RAW_REPO" | sed -e 's|https://github.com/||g' -e 's|http://github.com/||g' -e 's|\.git$||g' -e 's|^/||g' -e 's|/$||g')
+          echo "target_repo=$CLEAN_REPO" >> $GITHUB_OUTPUT
+          echo "✅ Configured to checkout private repository: $CLEAN_REPO"
+
       - name: Checkout Private Repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ secrets.PRIVATE_REPO_NAME }}
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: main
+          repository: ${{ steps.repo_prep.outputs.target_repo }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN || vars.PRIVATE_REPO_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
