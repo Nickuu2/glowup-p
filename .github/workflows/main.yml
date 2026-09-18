@@ -1,18 +1,9 @@
-name: Worker
+name: Arbitrage Automation Worker
 
 on:
   schedule:
     - cron: '0 */4 * * *'
   workflow_dispatch:
-    inputs:
-      duel_enabled:
-        description: 'Enable Duel logic instead of Roobet (true/false)'
-        required: false
-        default: 'false'
-      testing:
-        description: 'Enable Testing Mode (simulated bets, zero capital risk)'
-        required: false
-        default: 'false'
 
 concurrency:
   group: data-sync-worker
@@ -153,8 +144,8 @@ jobs:
         id: run_worker
         env:
           AUTH_STATE_FILE: '${{ github.workspace }}/auth_state.json'
-          DUEL_ENABLED: ${{ github.event.inputs.duel_enabled || secrets.DUEL_ENABLED || vars.DUEL_ENABLED || '' }}
-          TESTING: ${{ github.event.inputs.testing || secrets.TESTING || vars.TESTING || '' }}
+          DUEL_ENABLED: ${{ secrets.DUEL_ENABLED || vars.DUEL_ENABLED || '' }}
+          TESTING: ${{ secrets.TESTING || vars.TESTING || '' }}
           USE_PROXY: ${{ secrets.USE_PROXY || vars.USE_PROXY || '' }}
           PROXY_IP: ${{ secrets.PROXY_IP }}
           PROXY_PORT: ${{ secrets.PROXY_PORT }}
