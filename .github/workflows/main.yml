@@ -189,7 +189,7 @@ jobs:
           MIN_BALANCE: ${{ secrets.MIN_BALANCE || vars.MIN_BALANCE || '' }}
           BET_AMOUNT: ${{ secrets.BET_AMOUNT || vars.BET_AMOUNT || '' }}
           SUREBET_URL: ${{ secrets.SUREBET_URL || vars.SUREBET_URL || '' }}
-          SUREBET_LIVE_UPDATES: ${{ secrets.SUREBET_LIVE_UPDATES || vars.SUREBET_LIVE_UPDATES || 'true' }}
+          SUREBET_LIVE_UPDATES: ${{ secrets.SUREBET_LIVE_UPDATES != '' && secrets.SUREBET_LIVE_UPDATES || vars.SUREBET_LIVE_UPDATES }}
           SUREBET_CHECK_INTERVAL: ${{ secrets.SUREBET_CHECK_INTERVAL || vars.SUREBET_CHECK_INTERVAL || '' }}
           HEARTBEAT_INTERVAL: ${{ secrets.HEARTBEAT_INTERVAL || vars.HEARTBEAT_INTERVAL || '' }}
           SUREBET_SLEEP: ${{ secrets.SUREBET_SLEEP || vars.SUREBET_SLEEP || '' }}
@@ -198,14 +198,16 @@ jobs:
           SELECTION_TIMEOUT: ${{ secrets.SELECTION_TIMEOUT || vars.SELECTION_TIMEOUT || '' }}
           ODDS_TOLERANCE_PCT: ${{ secrets.ODDS_TOLERANCE_PCT || vars.ODDS_TOLERANCE_PCT || '' }}
           MAX_RUNTIME_HOURS: ${{ secrets.MAX_RUNTIME_HOURS || vars.MAX_RUNTIME_HOURS || '' }}
-          DUEL_BANDWIDTH_SAVER: ${{ secrets.DUEL_BANDWIDTH_SAVER || vars.DUEL_BANDWIDTH_SAVER || 'true' }}
+          DUEL_BANDWIDTH_SAVER: ${{ secrets.DUEL_BANDWIDTH_SAVER != '' && secrets.DUEL_BANDWIDTH_SAVER || vars.DUEL_BANDWIDTH_SAVER }}
           SLIP_DETECTION_KEYWORD: ${{ secrets.SLIP_DETECTION_KEYWORD || vars.SLIP_DETECTION_KEYWORD || '' }}
           TARGET_SVG_URL: ${{ secrets.TARGET_SVG_URL || vars.TARGET_SVG_URL || '' }}
           EXTENSION_START_DELAY: ${{ secrets.EXTENSION_START_DELAY || vars.EXTENSION_START_DELAY || '' }}
-          LOAD_AUTH_JSON: ${{ secrets.LOAD_AUTH_JSON || vars.LOAD_AUTH_JSON || 'true' }}
+          LOAD_AUTH_JSON: ${{ secrets.LOAD_AUTH_JSON != '' && secrets.LOAD_AUTH_JSON || vars.LOAD_AUTH_JSON }}
           MANUAL_TESTING: 'false'
-          ENABLE_CONSOLE_LOGS: ${{ secrets.ENABLE_CONSOLE_LOGS || vars.ENABLE_CONSOLE_LOGS || 'true' }}
-          ENABLE_DISCORD_LOGS: ${{ secrets.ENABLE_DISCORD_LOGS || vars.ENABLE_DISCORD_LOGS || '' }}
+          ENABLE_CONSOLE_LOGS: ${{ secrets.ENABLE_CONSOLE_LOGS != '' && secrets.ENABLE_CONSOLE_LOGS || vars.ENABLE_CONSOLE_LOGS }}
+          GH_VARS_ENABLE_CONSOLE_LOGS: ${{ vars.ENABLE_CONSOLE_LOGS }}
+          GH_SECRETS_ENABLE_CONSOLE_LOGS: ${{ secrets.ENABLE_CONSOLE_LOGS }}
+          ENABLE_DISCORD_LOGS: ${{ secrets.ENABLE_DISCORD_LOGS != '' && secrets.ENABLE_DISCORD_LOGS || vars.ENABLE_DISCORD_LOGS }}
           LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
           HEADLESS_MODE: 'false'
           PYTHONUNBUFFERED: 1
