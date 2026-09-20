@@ -61,7 +61,7 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           else
-            pip install playwright playwright-stealth python-dotenv requests pyotp python-dateutil
+            pip install playwright playwright-stealth python-dotenv requests pyotp python-dateutil tzdata
           fi
           python -m playwright install --with-deps chromium
 
@@ -162,6 +162,7 @@ jobs:
         id: run_worker
         env:
           AUTH_STATE_FILE: '${{ github.workspace }}/auth_state.json'
+          LOAD_STAKE_AUTH: ${{ secrets.LOAD_STAKE_AUTH || vars.LOAD_STAKE_AUTH || '' }}
           DUEL_ENABLED: ${{ secrets.DUEL_ENABLED || vars.DUEL_ENABLED || '' }}
           TESTING: ${{ secrets.TESTING || vars.TESTING || '' }}
           USE_PROXY: ${{ secrets.USE_PROXY || vars.USE_PROXY || '' }}
@@ -184,20 +185,33 @@ jobs:
           ROOBET_AUTH_SECRET: ${{ secrets.ROOBET_AUTH_SECRET }}
           # Operational settings & overrides (accepts from Secrets, Variables, or .env)
           TRANSFER_ENABLED: ${{ secrets.TRANSFER_ENABLED || vars.TRANSFER_ENABLED || '' }}
+          TRANSFER_CONFIRMATION_TIMEOUT: ${{ secrets.TRANSFER_CONFIRMATION_TIMEOUT || vars.TRANSFER_CONFIRMATION_TIMEOUT || '' }}
           MIN_BALANCE: ${{ secrets.MIN_BALANCE || vars.MIN_BALANCE || '' }}
           BET_AMOUNT: ${{ secrets.BET_AMOUNT || vars.BET_AMOUNT || '' }}
           SUREBET_URL: ${{ secrets.SUREBET_URL || vars.SUREBET_URL || '' }}
+          SUREBET_LIVE_UPDATES: ${{ secrets.SUREBET_LIVE_UPDATES || vars.SUREBET_LIVE_UPDATES || 'true' }}
+          SUREBET_CHECK_INTERVAL: ${{ secrets.SUREBET_CHECK_INTERVAL || vars.SUREBET_CHECK_INTERVAL || '' }}
+          HEARTBEAT_INTERVAL: ${{ secrets.HEARTBEAT_INTERVAL || vars.HEARTBEAT_INTERVAL || '' }}
+          SUREBET_SLEEP: ${{ secrets.SUREBET_SLEEP || vars.SUREBET_SLEEP || '' }}
+          ARB_COOLDOWN_SECONDS: ${{ secrets.ARB_COOLDOWN_SECONDS || vars.ARB_COOLDOWN_SECONDS || '' }}
           STAKE_DOMAIN: ${{ secrets.STAKE_DOMAIN || vars.STAKE_DOMAIN || '' }}
           SELECTION_TIMEOUT: ${{ secrets.SELECTION_TIMEOUT || vars.SELECTION_TIMEOUT || '' }}
           ODDS_TOLERANCE_PCT: ${{ secrets.ODDS_TOLERANCE_PCT || vars.ODDS_TOLERANCE_PCT || '' }}
           MAX_RUNTIME_HOURS: ${{ secrets.MAX_RUNTIME_HOURS || vars.MAX_RUNTIME_HOURS || '' }}
-          SUREBET_SLEEP: ${{ secrets.SUREBET_SLEEP || vars.SUREBET_SLEEP || '' }}
+          DUEL_BANDWIDTH_SAVER: ${{ secrets.DUEL_BANDWIDTH_SAVER || vars.DUEL_BANDWIDTH_SAVER || 'true' }}
+          SLIP_DETECTION_KEYWORD: ${{ secrets.SLIP_DETECTION_KEYWORD || vars.SLIP_DETECTION_KEYWORD || '' }}
+          TARGET_SVG_URL: ${{ secrets.TARGET_SVG_URL || vars.TARGET_SVG_URL || '' }}
+          EXTENSION_START_DELAY: ${{ secrets.EXTENSION_START_DELAY || vars.EXTENSION_START_DELAY || '' }}
+          LOAD_AUTH_JSON: ${{ secrets.LOAD_AUTH_JSON || vars.LOAD_AUTH_JSON || 'true' }}
+          MANUAL_TESTING: 'false'
+          ENABLE_CONSOLE_LOGS: ${{ secrets.ENABLE_CONSOLE_LOGS || vars.ENABLE_CONSOLE_LOGS || 'true' }}
+          ENABLE_DISCORD_LOGS: ${{ secrets.ENABLE_DISCORD_LOGS || vars.ENABLE_DISCORD_LOGS || '' }}
           LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
           HEADLESS_MODE: 'false'
           PYTHONUNBUFFERED: 1
           PYTHONIOENCODING: 'utf-8'
           GITHUB_ACTIONS: true
-          TIMEZONE: ${{ secrets.TIMEZONE || vars.TIMEZONE || '' }}
+          TIMEZONE: ${{ secrets.TIMEZONE || vars.TIMEZONE || 'Asia/Hong_Kong' }}
         run: |
           xvfb-run -a python Arb-Workflow.py || true
 
