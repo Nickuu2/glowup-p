@@ -208,7 +208,11 @@ jobs:
           GH_VARS_ENABLE_CONSOLE_LOGS: ${{ vars.ENABLE_CONSOLE_LOGS }}
           GH_SECRETS_ENABLE_CONSOLE_LOGS: ${{ secrets.ENABLE_CONSOLE_LOGS }}
           ENABLE_DISCORD_LOGS: ${{ secrets.ENABLE_DISCORD_LOGS != '' && secrets.ENABLE_DISCORD_LOGS || vars.ENABLE_DISCORD_LOGS }}
-          LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
+          GH_VARS_ENABLE_DISCORD_LOGS: ${{ vars.ENABLE_DISCORD_LOGS }}
+          GH_SECRETS_ENABLE_DISCORD_LOGS: ${{ secrets.ENABLE_DISCORD_LOGS }}
+          LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL || vars.LOGS_WEBHOOK_URL || '' }}
+          GH_VARS_LOGS_WEBHOOK_URL: ${{ vars.LOGS_WEBHOOK_URL }}
+          GH_SECRETS_LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
           HEADLESS_MODE: 'false'
           PYTHONUNBUFFERED: 1
           PYTHONIOENCODING: 'utf-8'
@@ -254,14 +258,12 @@ jobs:
               echo "✅ Encrypted worker_data.json"
             fi
             if [ -d playwright_user_data ]; then
-              python - <<'PY'
-              import zipfile, os, pathlib
-              src = pathlib.Path('playwright_user_data')
-              with zipfile.ZipFile('playwright_user_data.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
-                  for f in src.rglob('*'):
-                      zf.write(f, f.relative_to(src.parent))
-              print('✅ Profile zipped')
-              PY
+              if command -v zip >/dev/null 2>&1; then
+                zip -rq playwright_user_data.zip playwright_user_data
+              else
+                python -c "import zipfile, pathlib; src = pathlib.Path('playwright_user_data'); zf = zipfile.ZipFile('playwright_user_data.zip', 'w', zipfile.ZIP_DEFLATED); [zf.write(f, f.relative_to(src.parent)) for f in src.rglob('*') if f.is_file()]; zf.close()"
+              fi
+              echo "✅ Profile zipped"
               gpg --quiet --batch --yes --symmetric --passphrase "$GPG_PASSPHRASE" \
               --output playwright_user_data.zip.gpg playwright_user_data.zip
               echo "✅ Encrypted browser profile"
@@ -295,7 +297,7 @@ jobs:
         if: always() && steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true'
         continue-on-error: true
         env:
-          LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
+          LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL || vars.LOGS_WEBHOOK_URL || '' }}
           RUN_STATUS: ${{ steps.parse.outputs.status }}
           RUN_REASON: ${{ steps.parse.outputs.reason }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -304,6 +306,12 @@ jobs:
           python - <<'PY'
           import os, requests
           url = os.environ.get('LOGS_WEBHOOK_URL', '').strip()
+          if not url and os.path.exists('.env'):
+              try:
+                  from dotenv import dotenv_values
+                  url = (dotenv_values('.env').get('LOGS_WEBHOOK_URL') or '').strip()
+              except Exception:
+                  pass
           if not url:
               exit(0)
           status = os.environ.get('RUN_STATUS', 'unknown').strip()
