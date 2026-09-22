@@ -334,3 +334,53 @@ jobs:
           except Exception:
               pass
           PY
+
+      - name: Trigger Next Run (24/7 Perpetual Auto-Chaining)
+        if: always() && steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true' && steps.parse.outputs.reason != 'manual_testing_closed'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN || github.token }}
+          WORKFLOW_FILE: 'Arb-Workflow.yml'
+        run: |
+          echo "🔄 Preparing next continuous 24/7 run..."
+          sleep 15
+
+          # Detect actual workflow file name if available
+          target_workflow="${WORKFLOW_FILE}"
+          if [ -n "$GITHUB_WORKFLOW_REF" ]; then
+            extracted=$(echo "$GITHUB_WORKFLOW_REF" | sed -e 's|.*\.github/workflows/||' -e 's|@.*||')
+            if [ -n "$extracted" ]; then
+              target_workflow="$extracted"
+            fi
+          fi
+
+          dispatched=false
+          # Attempt dispatch via gh CLI first
+          if command -v gh >/dev/null 2>&1; then
+            echo "Attempting dispatch via gh CLI for $target_workflow..."
+            if gh workflow run "$target_workflow" --repo "$GITHUB_REPOSITORY" --ref "${GITHUB_REF_NAME:-main}"; then
+              echo "✅ Next run successfully dispatched via gh CLI!"
+              dispatched=true
+            fi
+          fi
+
+          # Fallback to direct GitHub REST API if gh CLI did not dispatch
+          if [ "$dispatched" != "true" ] && [ -n "$GH_TOKEN" ]; then
+            echo "Attempting dispatch via GitHub REST API..."
+            url="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${target_workflow}/dispatches"
+            ref="${GITHUB_REF_NAME:-main}"
+            resp=$(curl -s -w "%{http_code}" -o /dev/null -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "$url" -d "{\"ref\":\"$ref\"}")
+            if [ "$resp" = "204" ]; then
+              echo "✅ Next run successfully dispatched via GitHub REST API (HTTP 204)!"
+              dispatched=true
+            else
+              echo "⚠️ REST API dispatch returned HTTP $resp (scheduled cron will trigger next run)."
+            fi
+          fi
+
+          if [ "$dispatched" = "true" ]; then
+            echo "🚀 24/7 Auto-chain active: Next worker will start immediately."
+          fi
