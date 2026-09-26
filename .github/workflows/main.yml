@@ -164,6 +164,7 @@ jobs:
           AUTH_STATE_FILE: '${{ github.workspace }}/auth_state.json'
           LOAD_STAKE_AUTH: ${{ secrets.LOAD_STAKE_AUTH || vars.LOAD_STAKE_AUTH || '' }}
           DUEL_ENABLED: ${{ secrets.DUEL_ENABLED || vars.DUEL_ENABLED || '' }}
+          ALL_IN_MODE: ${{ secrets.ALL_IN_MODE != '' && secrets.ALL_IN_MODE || vars.ALL_IN_MODE }}
           TESTING: ${{ secrets.TESTING || vars.TESTING || '' }}
           USE_PROXY: ${{ secrets.USE_PROXY || vars.USE_PROXY || '' }}
           PROXY_IP: ${{ secrets.PROXY_IP }}
@@ -243,6 +244,30 @@ jobs:
           print(f'wait_hours={wait_hours}')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'status={status}\nreason={reason}\nwait_hours={wait_hours}\n')
+          PY
+
+      - name: Update pause window (limited)
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.checkpause.outputs.paused != 'true' && steps.parse.outputs.status == 'limited_sleep'
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, time, requests
+          def set_var(token, owner, repo, name, value):
+              url = f"https://api.github.com/repos/{owner}/{repo}/actions/variables/{name}"
+              h = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+              r = requests.patch(url, headers=h, json={"name": name, "value": value})
+              if r.status_code == 404:
+                  url2 = f"https://api.github.com/repos/{owner}/{repo}/actions/variables"
+                  requests.post(url2, headers=h, json={"name": name, "value": value})
+          token = os.environ.get('GH_TOKEN', '')
+          repo_full = os.environ.get('GITHUB_REPOSITORY', '')
+          if token and '/' in repo_full:
+              owner, repo = repo_full.split('/')
+              hours = float('${{ steps.parse.outputs.wait_hours }}' or '2')
+              pause_until = str(int(time.time()) + int(hours * 3600))
+              set_var(token, owner, repo, 'PAUSE_UNTIL', pause_until)
+              print(f'✅ PAUSE_UNTIL set to {pause_until} ({hours}h from now)')
           PY
 
       - name: Encrypt & Save Cache
