@@ -165,6 +165,7 @@ jobs:
           LOAD_STAKE_AUTH: ${{ secrets.LOAD_STAKE_AUTH || vars.LOAD_STAKE_AUTH || '' }}
           DUEL_ENABLED: ${{ secrets.DUEL_ENABLED || vars.DUEL_ENABLED || '' }}
           ALL_IN_MODE: ${{ secrets.ALL_IN_MODE != '' && secrets.ALL_IN_MODE || vars.ALL_IN_MODE }}
+          VALUEBET_MODE: ${{ secrets.VALUEBET_MODE != '' && secrets.VALUEBET_MODE || vars.VALUEBET_MODE }}
           TESTING: ${{ secrets.TESTING || vars.TESTING || '' }}
           USE_PROXY: ${{ secrets.USE_PROXY || vars.USE_PROXY || '' }}
           PROXY_IP: ${{ secrets.PROXY_IP }}
