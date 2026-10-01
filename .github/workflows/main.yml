@@ -215,6 +215,9 @@ jobs:
           LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL || vars.LOGS_WEBHOOK_URL || '' }}
           GH_VARS_LOGS_WEBHOOK_URL: ${{ vars.LOGS_WEBHOOK_URL }}
           GH_SECRETS_LOGS_WEBHOOK_URL: ${{ secrets.LOGS_WEBHOOK_URL }}
+          CRISP_LOGS: ${{ secrets.CRISP_LOGS != '' && secrets.CRISP_LOGS || vars.CRISP_LOGS }}
+          GH_VARS_CRISP_LOGS: ${{ vars.CRISP_LOGS }}
+          GH_SECRETS_CRISP_LOGS: ${{ secrets.CRISP_LOGS }}
           HEADLESS_MODE: 'false'
           PYTHONUNBUFFERED: 1
           PYTHONIOENCODING: 'utf-8'
