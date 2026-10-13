@@ -188,6 +188,8 @@ jobs:
           # Operational settings & overrides (accepts from Secrets, Variables, or .env)
           TRANSFER_ENABLED: ${{ secrets.TRANSFER_ENABLED || vars.TRANSFER_ENABLED || '' }}
           TRANSFER_CONFIRMATION_TIMEOUT: ${{ secrets.TRANSFER_CONFIRMATION_TIMEOUT || vars.TRANSFER_CONFIRMATION_TIMEOUT || '' }}
+          STAKE_ADDRESS: ${{ secrets.STAKE_ADDRESS || secrets.stake_address || vars.STAKE_ADDRESS || vars.stake_address || '' }}
+          DUEL_ADDRESS: ${{ secrets.DUEL_ADDRESS || secrets.duel_address || vars.DUEL_ADDRESS || vars.duel_address || '' }}
           MIN_BALANCE: ${{ secrets.MIN_BALANCE || vars.MIN_BALANCE || '' }}
           BET_AMOUNT: ${{ secrets.BET_AMOUNT || vars.BET_AMOUNT || '' }}
           SUREBET_URL: ${{ secrets.SUREBET_URL || vars.SUREBET_URL || '' }}
